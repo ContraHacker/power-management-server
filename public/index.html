@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grid — City Power Monitoring</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: {
+              950: '#0a0d13',
+              900: '#0f131b',
+              850: '#131822',
+              800: '#171d29',
+              700: '#232b3a',
+              600: '#334155',
+            },
+            ink: {
+              100: '#e8ecf3',
+              300: '#aab3c4',
+              500: '#6b7688',
+              700: '#454f61',
+            },
+            volt: '#f0a94e',
+            freq: '#2dd4c4',
+            live: '#3ddc84',
+            dead: '#f2596b',
+          },
+          fontFamily: {
+            display: ['"Space Grotesk"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+            body: ['Inter', 'sans-serif'],
+          },
+          boxShadow: {
+            glow: '0 0 0 1px rgba(61,220,132,0.25), 0 0 24px rgba(61,220,132,0.35)',
+            'glow-dead': '0 0 0 1px rgba(242,89,107,0.25), 0 0 24px rgba(242,89,107,0.3)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      background-color: #0a0d13;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+
+    .tabular {
+      font-variant-numeric: tabular-nums;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #232b3a;
+      border-radius: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+
+    @keyframes pulse-ring {
+      0% {
+        box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.45);
+      }
+
+      100% {
+        box-shadow: 0 0 0 10px rgba(61, 220, 132, 0);
+      }
+    }
+
+    .pulse-live {
+      animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.25;
+      }
+    }
+
+    .blink {
+      animation: blink 1.4s ease-in-out infinite;
+    }
+
+    .skeleton {
+      background: linear-gradient(90deg, #131822 25%, #171d29 37%, #131822 63%);
+      background-size: 400% 100%;
+      animation: shimmer 1.6s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: 100% 50%;
+      }
+
+      100% {
+        background-position: 0 50%;
+      }
+    }
+  </style>
+</head>
+
+<body class="font-body text-ink-100 min-h-screen antialiased">
+
+  <div class="max-w-7xl mx-auto px-5 sm:px-8 py-6">
+
+    <!-- Top bar -->
+    <header class="flex items-center justify-between border-b border-base-700/60 pb-5 mb-6">
+      <div>
+        <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase mb-1.5">Substation Feed · Live
+          Telemetry</p>
+        <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink-100 tracking-tight">Grid<span
+            class="text-ink-500 font-normal"> / City Power Monitor</span></h1>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="hidden sm:flex flex-col items-end">
+          <span class="font-mono text-xs text-ink-500 uppercase tracking-wider">Local time</span>
+          <span id="clock" class="font-mono text-sm text-ink-300 tabular">--:--:--</span>
+        </div>
+        <div class="flex items-center gap-2 rounded-full border border-base-700 bg-base-850 pl-2.5 pr-3.5 py-1.5">
+          <span class="relative flex h-2 w-2">
+            <span id="pollDot" class="relative inline-flex rounded-full h-2 w-2 bg-live"></span>
+          </span>
+          <span class="font-mono text-xs text-ink-300 uppercase tracking-wider">Polling 5s</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Status + readouts -->
+    <section class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
+
+      <!-- Status card -->
+      <div id="statusCard"
+        class="lg:col-span-2 rounded-2xl border border-base-700 bg-base-850 p-6 flex flex-col justify-between transition-shadow duration-500">
+        <div class="flex items-start justify-between">
+          <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Supply Status</p>
+          <span id="lastEventTime" class="font-mono text-[11px] text-ink-700 tabular">—</span>
+        </div>
+        <div class="flex items-center gap-4 my-6">
+          <div class="relative flex items-center justify-center h-14 w-14 shrink-0">
+            <div id="statusDot" class="h-5 w-5 rounded-full bg-ink-700 transition-colors duration-500"></div>
+          </div>
+          <div>
+            <div id="statusText" class="font-display text-2xl sm:text-3xl font-semibold text-ink-300">Connecting…</div>
+            <div id="statusSub" class="font-mono text-xs text-ink-500 mt-1">Awaiting first reading</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3 pt-4 border-t border-base-700/60">
+          <div>
+            <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Uptime (6h window)</p>
+            <p id="uptimeStat" class="font-mono text-lg text-ink-100 tabular">—</p>
+          </div>
+          <div>
+            <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Outages (6h window)</p>
+            <p id="outageStat" class="font-mono text-lg text-ink-100 tabular">—</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Voltage readout -->
+      <div class="lg:col-span-1 rounded-2xl border border-base-700 bg-base-850 p-6 flex flex-col justify-between">
+        <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Voltage</p>
+        <div class="my-4">
+          <span id="voltageNow" class="font-mono text-4xl font-semibold text-volt tabular">--</span>
+          <span class="font-mono text-sm text-ink-500 ml-1">V</span>
+        </div>
+        <div class="h-1 w-full rounded-full bg-base-700 overflow-hidden">
+          <div id="voltageBar" class="h-full bg-volt/70 transition-all duration-700" style="width:0%"></div>
+        </div>
+        <p class="font-mono text-[10px] text-ink-700 mt-2">Nominal band 200–240 V</p>
+      </div>
+
+      <!-- Frequency readout -->
+      <div class="lg:col-span-1 rounded-2xl border border-base-700 bg-base-850 p-6 flex flex-col justify-between">
+        <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Frequency</p>
+        <div class="my-4">
+          <span id="freqNow" class="font-mono text-4xl font-semibold text-freq tabular">--</span>
+          <span class="font-mono text-sm text-ink-500 ml-1">Hz</span>
+        </div>
+        <div class="h-1 w-full rounded-full bg-base-700 overflow-hidden">
+          <div id="freqBar" class="h-full bg-freq/70 transition-all duration-700" style="width:0%"></div>
+        </div>
+        <p class="font-mono text-[10px] text-ink-700 mt-2">Nominal band 49–51 Hz</p>
+      </div>
+
+      <!-- Events feed -->
+      <div
+        class="lg:col-span-1 rounded-2xl border border-base-700 bg-base-850 p-5 flex flex-col min-h-[220px] lg:min-h-0">
+        <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase mb-3">Event Log</p>
+        <ul id="events" class="flex-1 overflow-y-auto space-y-2.5 pr-1 max-h-[260px]">
+          <li class="skeleton h-4 w-full rounded"></li>
+          <li class="skeleton h-4 w-4/5 rounded"></li>
+          <li class="skeleton h-4 w-full rounded"></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Voltage · Last 6h <span
+              class="text-ink-700 normal-case tracking-normal">(auto-zoomed)</span></p>
+          <span class="h-2 w-2 rounded-full bg-volt"></span>
+        </div>
+        <div class="h-[280px]">
+          <canvas id="voltageChart"></canvas>
+        </div>
+      </div>
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <div class="flex items-center justify-between mb-3">
+          <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Frequency · Last 6h <span
+              class="text-ink-700 normal-case tracking-normal">(auto-zoomed)</span></p>
+          <span class="h-2 w-2 rounded-full bg-freq"></span>
+        </div>
+        <div class="h-[280px]">
+          <canvas id="frequencyChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- 24h event timeline -->
+    <section class="mt-4 rounded-2xl border border-base-700 bg-base-850 p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Event Timeline · Last 24h</p>
+        <div class="flex items-center gap-4">
+          <span class="flex items-center gap-1.5 font-mono text-[10px] text-ink-500 uppercase tracking-wider">
+            <span class="h-2 w-2 rounded-full bg-live/60"></span> Supply on
+          </span>
+          <span class="flex items-center gap-1.5 font-mono text-[10px] text-ink-500 uppercase tracking-wider">
+            <span class="h-2 w-2 rounded-full bg-dead"></span> Outage
+          </span>
+        </div>
+      </div>
+      <div id="timelineWrap" class="w-full overflow-x-auto">
+        <svg id="timelineSvg" viewBox="0 0 1000 110" class="w-full min-w-[560px]" style="height:110px"
+          preserveAspectRatio="none"></svg>
+      </div>
+      <p id="timelineEmpty" class="hidden font-mono text-[11px] text-ink-700 mt-2">No outages recorded in the last 24
+        hours.</p>
+    </section>
+
+    <footer class="flex flex-wrap items-center justify-between gap-2 mt-6 pt-4 border-t border-base-700/60">
+      <p class="font-mono text-[11px] text-ink-700">City Power Dashboard · read-only telemetry view</p>
+      <p id="lastRefreshed" class="font-mono text-[11px] text-ink-700 tabular">Last refreshed —</p>
+    </footer>
+
+  </div>
+
+  <script>
+    const fontMono = "'JetBrains Mono', monospace";
+
+    Chart.defaults.font.family = fontMono;
+    Chart.defaults.color = '#6b7688';
+
+    function baseGridOptions(min, max) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#131822',
+            borderColor: '#232b3a',
+            borderWidth: 1,
+            titleFont: { family: fontMono, size: 11 },
+            bodyFont: { family: fontMono, size: 12 },
+            padding: 10,
+            displayColors: false,
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
+            border: { color: '#232b3a' },
+            ticks: { color: '#454f61', font: { size: 10 }, maxTicksLimit: 8 }
+          },
+          y: {
+            min, max,
+            grid: { color: 'rgba(255,255,255,0.05)', drawTicks: false },
+            border: { display: false },
+            ticks: {
+              color: '#454f61', font: { size: 10 },
+              // extra precision since the axis is now zoomed to a tight band
+              callback: (v) => Number(v.toFixed(2))
+            }
+          }
+        }
+      };
+    }
+
+    // Zooms the y-axis to the actual spread of the data (plus a small margin)
+    // instead of a fixed wide band, so small variances stay visible.
+    function computeZoomedRange(values, minPad, roundTo) {
+      const valid = values.filter(v => v !== null && v !== undefined && !Number.isNaN(v));
+      if (valid.length === 0) return { min: undefined, max: undefined };
+      const lo = Math.min(...valid);
+      const hi = Math.max(...valid);
+      const spread = hi - lo;
+      const pad = Math.max(spread * 0.25, minPad);
+      const round = (n) => Math.round(n / roundTo) * roundTo;
+      return { min: round(lo - pad), max: round(hi + pad) };
+    }
+
+    const voltageChart = new Chart(document.getElementById('voltageChart'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Voltage (V)',
+          data: [],
+          borderColor: '#f0a94e',
+          backgroundColor: 'rgba(240,169,78,0.12)',
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+          fill: true,
+          spanGaps: false,
+        }]
+      },
+      options: baseGridOptions(180, 260)
+    });
+
+    const frequencyChart = new Chart(document.getElementById('frequencyChart'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Frequency (Hz)',
+          data: [],
+          borderColor: '#2dd4c4',
+          backgroundColor: 'rgba(45,212,196,0.12)',
+          tension: 0.3,
+          pointRadius: 0,
+          borderWidth: 2,
+          fill: true,
+          spanGaps: false,
+        }]
+      },
+      options: baseGridOptions(48, 52)
+    });
+
+    function formatTime(ts) {
+      return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function formatFull(ts) {
+      return new Date(ts * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function updateClock() {
+      document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    function setStatus(isOn, latest) {
+      const dot = document.getElementById('statusDot');
+      const card = document.getElementById('statusCard');
+      const text = document.getElementById('statusText');
+      const sub = document.getElementById('statusSub');
+      const voltageEl = document.getElementById('voltageNow');
+      const freqEl = document.getElementById('freqNow');
+      const voltageBar = document.getElementById('voltageBar');
+      const freqBar = document.getElementById('freqBar');
+
+      if (isOn) {
+        dot.className = 'h-5 w-5 rounded-full bg-live pulse-live transition-colors duration-500';
+        card.className = 'lg:col-span-2 rounded-2xl border border-live/30 bg-base-850 p-6 flex flex-col justify-between shadow-glow transition-shadow duration-500';
+        text.textContent = 'Electricity ON';
+        text.className = 'font-display text-2xl sm:text-3xl font-semibold text-live';
+        sub.textContent = 'Supply nominal';
+        voltageEl.textContent = latest.voltage.toFixed(1);
+        freqEl.textContent = latest.frequency.toFixed(2);
+        voltageBar.style.width = Math.min(100, Math.max(0, ((latest.voltage - 180) / (260 - 180)) * 100)) + '%';
+        freqBar.style.width = Math.min(100, Math.max(0, ((latest.frequency - 48) / (52 - 48)) * 100)) + '%';
+      } else {
+        dot.className = 'h-5 w-5 rounded-full bg-dead transition-colors duration-500';
+        card.className = 'lg:col-span-2 rounded-2xl border border-dead/30 bg-base-850 p-6 flex flex-col justify-between shadow-glow-dead transition-shadow duration-500';
+        text.textContent = 'Electricity OFF';
+        text.className = 'font-display text-2xl sm:text-3xl font-semibold text-dead';
+        sub.textContent = 'No supply detected';
+        voltageEl.textContent = '--';
+        freqEl.textContent = '--';
+        voltageBar.style.width = '0%';
+        freqBar.style.width = '0%';
+      }
+    }
+
+    function renderEvents(events) {
+      const ul = document.getElementById('events');
+      ul.innerHTML = '';
+
+      const recent = events.slice().reverse().slice(0, 20);
+
+      if (recent.length === 0) {
+        ul.innerHTML = '<li class="font-mono text-xs text-ink-700">No events in this window.</li>';
+        return;
+      }
+
+      recent.forEach(e => {
+        const li = document.createElement('li');
+        li.className = 'flex items-start gap-2.5';
+        const isLost = e.event === 'power_lost';
+        li.innerHTML = `
+          <span class="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${isLost ? 'bg-dead' : 'bg-live'}"></span>
+          <div class="leading-tight">
+            <p class="text-xs text-ink-100">${isLost ? 'Power lost' : 'Power restored'}</p>
+            <p class="font-mono text-[10px] text-ink-700 tabular">${formatFull(e.ts)}</p>
+          </div>
+        `;
+        ul.appendChild(li);
+      });
+
+      if (recent.length > 0) {
+        document.getElementById('lastEventTime').textContent = formatTime(recent[0].ts);
+      }
+    }
+
+    function computeUptime(readings) {
+      if (readings.length === 0) return { pct: null, outages: 0 };
+      const onCount = readings.filter(r => r.power).length;
+      const pct = (onCount / readings.length) * 100;
+      let outages = 0;
+      for (let i = 1; i < readings.length; i++) {
+        if (readings[i - 1].power && !readings[i].power) outages++;
+      }
+      return { pct, outages };
+    }
+
+    let pollFailures = 0;
+
+    async function loadData() {
+      const now = Math.floor(Date.now() / 1000);
+      const from = now - 6 * 3600; // last 6 hours
+
+      try {
+        const [readingsRes, eventsRes] = await Promise.all([
+          fetch(`/api/readings?from=${from}&to=${now}`),
+          fetch(`/api/events?from=${from}&to=${now}`)
+        ]);
+
+        if (!readingsRes.ok || !eventsRes.ok) throw new Error('Non-200 response');
+
+        const readings = await readingsRes.json();
+        const events = await eventsRes.json();
+
+        const labels = [];
+        const voltageData = [];
+        const frequencyData = [];
+
+        readings.forEach(r => {
+          labels.push(formatTime(r.ts));
+          voltageData.push(r.power ? r.voltage : null);
+          frequencyData.push(r.power ? r.frequency : null);
+        });
+
+        const voltageRange = computeZoomedRange(voltageData, 0.5, 0.1);
+        voltageChart.data.labels = labels;
+        voltageChart.data.datasets[0].data = voltageData;
+        voltageChart.options.scales.y.min = voltageRange.min;
+        voltageChart.options.scales.y.max = voltageRange.max;
+        voltageChart.update();
+
+        const freqRange = computeZoomedRange(frequencyData, 0.05, 0.01);
+        frequencyChart.data.labels = labels;
+        frequencyChart.data.datasets[0].data = frequencyData;
+        frequencyChart.options.scales.y.min = freqRange.min;
+        frequencyChart.options.scales.y.max = freqRange.max;
+        frequencyChart.update();
+
+        const latest = readings[readings.length - 1];
+        setStatus(!!(latest && latest.power), latest || {});
+
+        renderEvents(events);
+
+        const { pct, outages } = computeUptime(readings);
+        document.getElementById('uptimeStat').textContent = pct === null ? '—' : `${pct.toFixed(1)}%`;
+        document.getElementById('outageStat').textContent = pct === null ? '—' : outages;
+
+        document.getElementById('lastRefreshed').textContent = `Last refreshed ${new Date().toLocaleTimeString()}`;
+
+        pollFailures = 0;
+        document.getElementById('pollDot').className = 'relative inline-flex rounded-full h-2 w-2 bg-live';
+
+      } catch (err) {
+        pollFailures++;
+        document.getElementById('pollDot').className = 'relative inline-flex rounded-full h-2 w-2 bg-dead blink';
+        document.getElementById('lastRefreshed').textContent = `Refresh failed at ${new Date().toLocaleTimeString()}`;
+        console.error('Failed to load dashboard data:', err);
+      }
+    }
+
+    // ---- 24h event timeline ----
+
+    const TL_X0 = 40, TL_X1 = 960, TL_Y = 46, TL_H = 20;
+
+    function tlX(ts, startTs, endTs) {
+      const clamped = Math.min(Math.max(ts, startTs), endTs);
+      return TL_X0 + ((clamped - startTs) / (endTs - startTs)) * (TL_X1 - TL_X0);
+    }
+
+    function svgEl(tag, attrs) {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const k in attrs) el.setAttribute(k, attrs[k]);
+      return el;
+    }
+
+    // Reconstructs on/off segments across the window from the ordered event
+    // stream. earliestKnownPower (if available) seeds the state at the left
+    // edge; otherwise we infer it from the first event, defaulting to "on".
+    function buildOutageSegments(events, startTs, endTs, earliestKnownPower) {
+      const sorted = events.slice().sort((a, b) => a.ts - b.ts);
+      let state = typeof earliestKnownPower === 'boolean'
+        ? earliestKnownPower
+        : (sorted[0] ? sorted[0].event !== 'power_lost' : true);
+
+      const segments = [];
+      let offStart = null;
+      if (state === false) offStart = startTs;
+
+      sorted.forEach(e => {
+        if (state === true && e.event === 'power_lost') {
+          offStart = e.ts;
+          state = false;
+        } else if (state === false && e.event === 'power_restored') {
+          segments.push([offStart, e.ts]);
+          offStart = null;
+          state = true;
+        }
+      });
+
+      if (state === false && offStart !== null) segments.push([offStart, endTs]);
+      return segments;
+    }
+
+    async function loadTimeline() {
+      const now = Math.floor(Date.now() / 1000);
+      const from = now - 24 * 3600;
+
+      try {
+        const [eventsRes, readingsRes] = await Promise.all([
+          fetch(`/api/events?from=${from}&to=${now}`),
+          fetch(`/api/readings?from=${from}&to=${now}`)
+        ]);
+        if (!eventsRes.ok || !readingsRes.ok) throw new Error('Non-200 response');
+
+        const events = await eventsRes.json();
+        const readings = await readingsRes.json();
+
+        const earliestKnownPower = readings.length ? !!readings[0].power : undefined;
+        const segments = buildOutageSegments(events, from, now, earliestKnownPower);
+
+        const svg = document.getElementById('timelineSvg');
+        svg.innerHTML = '';
+
+        // baseline "on" track
+        svg.appendChild(svgEl('rect', {
+          x: TL_X0, y: TL_Y, width: TL_X1 - TL_X0, height: TL_H, rx: 10,
+          fill: 'rgba(61,220,132,0.12)'
+        }));
+
+        // outage bands
+        segments.forEach(([segFrom, segTo]) => {
+          const x1 = tlX(segFrom, from, now);
+          const x2 = tlX(segTo, from, now);
+          svg.appendChild(svgEl('rect', {
+            x: x1, y: TL_Y, width: Math.max(x2 - x1, 2), height: TL_H, rx: 10,
+            fill: '#f2596b', 'fill-opacity': '0.85'
+          }));
+        });
+
+        // hour gridlines + labels, every 3 hours
+        for (let h = 0; h <= 24; h += 3) {
+          const ts = from + h * 3600;
+          const x = tlX(ts, from, now);
+          svg.appendChild(svgEl('line', {
+            x1: x, x2: x, y1: TL_Y - 12, y2: TL_Y + TL_H + 10,
+            stroke: 'rgba(255,255,255,0.06)', 'stroke-width': 1
+          }));
+          const label = svgEl('text', {
+            x, y: TL_Y + TL_H + 26, 'text-anchor': h === 24 ? 'end' : (h === 0 ? 'start' : 'middle'),
+            'font-family': fontMono, 'font-size': '10', fill: '#454f61'
+          });
+          label.textContent = h === 24 ? 'now' : new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit' });
+          svg.appendChild(label);
+        }
+
+        // event markers with native hover tooltips
+        events.forEach(e => {
+          const x = tlX(e.ts, from, now);
+          const isLost = e.event === 'power_lost';
+          const marker = svgEl('circle', {
+            cx: x, cy: TL_Y - 6, r: 4,
+            fill: isLost ? '#f2596b' : '#3ddc84',
+            stroke: '#0f131b', 'stroke-width': 1.5
+          });
+          const title = svgEl('title', {});
+          title.textContent = `${isLost ? 'Power lost' : 'Power restored'} — ${formatFull(e.ts)}`;
+          marker.appendChild(title);
+          svg.appendChild(marker);
+        });
+
+        document.getElementById('timelineEmpty').classList.toggle('hidden', segments.length > 0);
+
+      } catch (err) {
+        console.error('Failed to load timeline:', err);
+      }
+    }
+
+    loadData();
+    loadTimeline();
+    setInterval(loadData, 5000);
+    setInterval(loadTimeline, 30000);
+  </script>
+
+</body>
+
+</html>
