@@ -1,10 +1,11 @@
 import Database from 'bun:sqlite';
+import compression from 'compression';
 import express from 'express';
 import path from 'path';
 
-
 const app = express();
 app.use(express.json());
+app.use(compression())
 app.use(express.static(path.join(process.cwd(), 'public')));
 
 // SQLite
@@ -107,10 +108,6 @@ app.get('/api/events', (req, res) => {
 // Health check
 app.get('/health', (_, res) => {
   res.json({ ok: true });
-});
-
-app.get('/dashboard', (_req, res) => {
-  res.sendFile(path.join(process.cwd(), 'public', 'index.html'));
 });
 
 const PORT = 9034;

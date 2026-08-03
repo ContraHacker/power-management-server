@@ -10,7 +10,9 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
+    "compression": "^1.8.1",
     "express": "^5.2.1"
   }
 }

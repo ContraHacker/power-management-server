@@ -129,6 +129,22 @@
         background-position: 0 50%;
       }
     }
+
+    /* Poll-rate dropdown: match the pill's dark chrome, keep native option list
+       (can't restyle the OS option popup, but the closed control matches). */
+    #pollRateSelect {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%236b7688' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 0 center;
+      padding-right: 16px;
+    }
+
+    #pollRateSelect option {
+      background-color: #131822;
+      color: #e8ecf3;
+    }
   </style>
 </head>
 
@@ -149,11 +165,20 @@
           <span class="font-mono text-xs text-ink-500 uppercase tracking-wider">Local time</span>
           <span id="clock" class="font-mono text-sm text-ink-300 tabular">--:--:--</span>
         </div>
-        <div class="flex items-center gap-2 rounded-full border border-base-700 bg-base-850 pl-2.5 pr-3.5 py-1.5">
+        <div class="flex items-center gap-2 rounded-full border border-base-700 bg-base-850 pl-2.5 pr-3 py-1.5">
           <span class="relative flex h-2 w-2">
             <span id="pollDot" class="relative inline-flex rounded-full h-2 w-2 bg-live"></span>
           </span>
-          <span class="font-mono text-xs text-ink-300 uppercase tracking-wider">Polling 1s</span>
+          <label for="pollRateSelect" class="sr-only">Polling rate</label>
+          <select id="pollRateSelect"
+            class="bg-transparent font-mono text-xs text-ink-300 uppercase tracking-wider border-none outline-none cursor-pointer">
+            <option value="1">Polling 1s</option>
+            <option value="2">Polling 2s</option>
+            <option value="5">Polling 5s</option>
+            <option value="10">Polling 10s</option>
+            <option value="30">Polling 30s</option>
+            <option value="60">Polling 60s</option>
+          </select>
         </div>
       </div>
     </header>
@@ -285,11 +310,18 @@
     Chart.defaults.font.family = fontMono;
     Chart.defaults.color = '#6b7688';
 
+    // Hard cap on points fed to each line chart. 6h of 1s data is up to
+    // 21,600 points; Chart.js re-tessellates every point on every .update(),
+    // which is the actual source of the lag (not the fetch, not the DOM).
+    // Rendering more than a few hundred points buys no visible fidelity on a
+    // ~900px-wide canvas anyway, so we stride down to this ceiling.
+    const MAX_CHART_POINTS = 360;
+
     function baseGridOptions(min, max) {
       return {
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 400 },
+        animation: false, // real-time redraws don't need tweening; this is pure render-cost removal
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -336,6 +368,23 @@
       return { min: round(lo - pad), max: round(hi + pad) };
     }
 
+    // Strides the raw readings array down to at most maxPoints, before any
+    // per-point formatting happens. This is a plain positional stride, not an
+    // average — outages are short square-wave dips, and averaging them into
+    // neighboring "on" readings would visually erase brief drops. A stride
+    // can still skip over a very short blip between two sampled indices;
+    // that's a real tradeoff of downsampling for render speed, not fixed here.
+    function downsampleReadings(readings, maxPoints) {
+      const n = readings.length;
+      if (n <= maxPoints) return readings;
+      const stride = Math.ceil(n / maxPoints);
+      const out = [];
+      for (let i = 0; i < n; i += stride) out.push(readings[i]);
+      const last = readings[n - 1];
+      if (out[out.length - 1] !== last) out.push(last); // keep the right edge current
+      return out;
+    }
+
     const voltageChart = new Chart(document.getElementById('voltageChart'), {
       type: 'line',
       data: {
@@ -380,6 +429,15 @@
 
     function formatFull(ts) {
       return new Date(ts * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    // Explicit padStart build rather than toLocaleTimeString: some locales
+    // omit seconds even when asked for 'second: 2-digit', and outages here
+    // run a few minutes, so seconds are the resolution that actually matters.
+    function formatHMS(ts) {
+      const d = new Date(ts * 1000);
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     }
 
     function updateClock() {
@@ -462,8 +520,6 @@
       return { pct, outages };
     }
 
-    let pollFailures = 0;
-
     async function loadData() {
       const now = Math.floor(Date.now() / 1000);
       const from = now - 6 * 3600; // last 6 hours
@@ -479,11 +535,20 @@
         const readings = await readingsRes.json();
         const events = await eventsRes.json();
 
+        // Uptime/outage stats use the FULL-resolution readings (they're a
+        // simple pass, cheap at any size). Only the chart series get strided
+        // down — that's where per-point render cost actually lives.
+        const { pct, outages } = computeUptime(readings);
+        document.getElementById('uptimeStat').textContent = pct === null ? '—' : `${pct.toFixed(1)}%`;
+        document.getElementById('outageStat').textContent = pct === null ? '—' : outages;
+
+        const sampled = downsampleReadings(readings, MAX_CHART_POINTS);
+
         const labels = [];
         const voltageData = [];
         const frequencyData = [];
 
-        readings.forEach(r => {
+        sampled.forEach(r => {
           labels.push(formatTime(r.ts));
           voltageData.push(r.power ? r.voltage : null);
           frequencyData.push(r.power ? r.frequency : null);
@@ -494,36 +559,46 @@
         voltageChart.data.datasets[0].data = voltageData;
         voltageChart.options.scales.y.min = voltageRange.min;
         voltageChart.options.scales.y.max = voltageRange.max;
-        voltageChart.update();
+        voltageChart.update('none'); // skip animation/tweening on every tick
 
         const freqRange = computeZoomedRange(frequencyData, 0.05, 0.01);
         frequencyChart.data.labels = labels;
         frequencyChart.data.datasets[0].data = frequencyData;
         frequencyChart.options.scales.y.min = freqRange.min;
         frequencyChart.options.scales.y.max = freqRange.max;
-        frequencyChart.update();
+        frequencyChart.update('none');
 
         const latest = readings[readings.length - 1];
         setStatus(!!(latest && latest.power), latest || {});
 
         renderEvents(events);
 
-        const { pct, outages } = computeUptime(readings);
-        document.getElementById('uptimeStat').textContent = pct === null ? '—' : `${pct.toFixed(1)}%`;
-        document.getElementById('outageStat').textContent = pct === null ? '—' : outages;
-
         document.getElementById('lastRefreshed').textContent = `Last refreshed ${new Date().toLocaleTimeString()}`;
 
-        pollFailures = 0;
         document.getElementById('pollDot').className = 'relative inline-flex rounded-full h-2 w-2 bg-live';
 
       } catch (err) {
-        pollFailures++;
         document.getElementById('pollDot').className = 'relative inline-flex rounded-full h-2 w-2 bg-dead blink';
         document.getElementById('lastRefreshed').textContent = `Refresh failed at ${new Date().toLocaleTimeString()}`;
         console.error('Failed to load dashboard data:', err);
       }
     }
+
+    // ---- Polling-rate control ----
+    // Single interval handle, torn down and rebuilt on rate change so there's
+    // never more than one loadData loop running at once.
+    let pollIntervalId = null;
+
+    function startPolling(seconds) {
+      if (pollIntervalId) clearInterval(pollIntervalId);
+      loadData(); // refresh immediately so the rate change feels responsive
+      pollIntervalId = setInterval(loadData, seconds * 1000);
+    }
+
+    const pollRateSelect = document.getElementById('pollRateSelect');
+    pollRateSelect.addEventListener('change', (e) => {
+      startPolling(Number(e.target.value));
+    });
 
     // ---- 24h event timeline ----
 
@@ -573,6 +648,9 @@
       const from = now - 24 * 3600;
 
       try {
+        // Only the FIRST reading in the window is used (to seed the on/off
+        // state at the left edge), but this still requests the full 24h of
+        // readings from the API to get it. Not fixed here — see note below.
         const [eventsRes, readingsRes] = await Promise.all([
           fetch(`/api/events?from=${from}&to=${now}`),
           fetch(`/api/readings?from=${from}&to=${now}`)
@@ -588,20 +666,50 @@
         const svg = document.getElementById('timelineSvg');
         svg.innerHTML = '';
 
-        // baseline "on" track
+        // baseline "on" track — square corners throughout, per request. The
+        // earlier fix (capping rx to segment size) only prevented the worst
+        // collapse-into-a-circle case; corners were still rounded, and on
+        // real data (outages of a few minutes on a 24h-wide axis) that's
+        // still enough curvature to blur where the edge actually is. Zero
+        // rounding, everywhere on this timeline, removes the ambiguity.
         svg.appendChild(svgEl('rect', {
-          x: TL_X0, y: TL_Y, width: TL_X1 - TL_X0, height: TL_H, rx: 10,
+          x: TL_X0, y: TL_Y, width: TL_X1 - TL_X0, height: TL_H, rx: 0,
           fill: 'rgba(61,220,132,0.12)'
         }));
 
-        // outage bands
+        // Outage bands. Two draw paths, both unrounded:
+        // - Narrower than TICK_THRESHOLD: too thin to read as a duration at
+        //   all (sub-2px on a 24h axis is well under a minute), so it's drawn
+        //   as a fixed-width vertical bar extending past the track, marking
+        //   "an outage happened here" rather than implying a measurable width.
+        // - At or above the threshold: drawn at its true width, square-cornered,
+        //   so a 5-minute outage reads as a 5-minute-wide bar, not a pill.
+        const TICK_THRESHOLD = 2; // px
+        const TICK_WIDTH = 3;
+
         segments.forEach(([segFrom, segTo]) => {
           const x1 = tlX(segFrom, from, now);
           const x2 = tlX(segTo, from, now);
-          svg.appendChild(svgEl('rect', {
-            x: x1, y: TL_Y, width: Math.max(x2 - x1, 2), height: TL_H, rx: 10,
-            fill: '#f2596b', 'fill-opacity': '0.85'
-          }));
+          const width = x2 - x1;
+
+          const title = svgEl('title', {});
+          title.textContent = `${formatHMS(segFrom)} to ${formatHMS(segTo)}`;
+
+          let bar;
+          if (width < TICK_THRESHOLD) {
+            const cx = (x1 + x2) / 2;
+            bar = svgEl('rect', {
+              x: cx - TICK_WIDTH / 2, y: TL_Y - 4, width: TICK_WIDTH, height: TL_H + 8, rx: 0,
+              fill: '#f2596b'
+            });
+          } else {
+            bar = svgEl('rect', {
+              x: x1, y: TL_Y, width, height: TL_H, rx: 0,
+              fill: '#f2596b', 'fill-opacity': '0.85'
+            });
+          }
+          bar.appendChild(title);
+          svg.appendChild(bar);
         });
 
         // hour gridlines + labels, every 3 hours
@@ -642,9 +750,8 @@
       }
     }
 
-    loadData();
+    startPolling(1); // default rate; dropdown reflects "1" by default in the HTML
     loadTimeline();
-    setInterval(loadData, 1000);
     setInterval(loadTimeline, 30000);
   </script>
 
