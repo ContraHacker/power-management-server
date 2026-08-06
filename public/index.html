@@ -36,6 +36,7 @@
             freq: '#2dd4c4',
             live: '#3ddc84',
             dead: '#f2596b',
+            unknown: '#454f61',
           },
           fontFamily: {
             display: ['"Space Grotesk"', 'sans-serif'],
@@ -130,8 +131,6 @@
       }
     }
 
-    /* Poll-rate dropdown: match the pill's dark chrome, keep native option list
-       (can't restyle the OS option popup, but the closed control matches). */
     #pollRateSelect {
       appearance: none;
       -webkit-appearance: none;
@@ -157,8 +156,8 @@
       <div>
         <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase mb-1.5">Substation Feed · Live
           Telemetry</p>
-        <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink-100 tracking-tight">Grid<span
-            class="text-ink-500 font-normal"> / City Power Monitor</span></h1>
+        <h1 class="font-display text-2xl sm:text-3xl font-semibold text-ink-100 tracking-tight"
+          onclick="go_fullscreen()">Grid<span class="text-ink-500 font-normal"> / City Power Monitor</span></h1>
       </div>
       <div class="flex items-center gap-4">
         <div class="hidden sm:flex flex-col items-end">
@@ -174,7 +173,7 @@
             class="bg-transparent font-mono text-xs text-ink-300 uppercase tracking-wider border-none outline-none cursor-pointer">
             <option value="1">Polling 1s</option>
             <option value="2">Polling 2s</option>
-            <option value="5">Polling 5s</option>
+            <option value="5" selected>Polling 5s</option>
             <option value="10">Polling 10s</option>
             <option value="30">Polling 30s</option>
             <option value="60">Polling 60s</option>
@@ -204,11 +203,11 @@
         </div>
         <div class="grid grid-cols-2 gap-3 pt-4 border-t border-base-700/60">
           <div>
-            <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Uptime (6h window)</p>
+            <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Uptime (24h window)</p>
             <p id="uptimeStat" class="font-mono text-lg text-ink-100 tabular">—</p>
           </div>
           <div>
-            <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Outages (6h window)</p>
+            <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Outages (24h window)</p>
             <p id="outageStat" class="font-mono text-lg text-ink-100 tabular">—</p>
           </div>
         </div>
@@ -252,11 +251,43 @@
       </div>
     </section>
 
+    <!-- Global System Metrics -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Total Outage (24h)</p>
+        <p id="metricOutage24" class="font-mono text-xl text-ink-100 tabular">—</p>
+      </div>
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Total Outage (All-Time)</p>
+        <p id="metricOutageAll" class="font-mono text-xl text-ink-100 tabular">—</p>
+      </div>
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Longest Outage (24h)</p>
+        <p id="metricLongestOutage" class="font-mono text-xl text-ink-100 tabular">—</p>
+      </div>
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">MTTR (24h)</p>
+        <p id="metricMTTR" class="font-mono text-xl text-ink-100 tabular">—</p>
+      </div>
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Readings (24h)</p>
+        <p id="metricReadingsCount" class="font-mono text-xl text-ink-100 tabular">—</p>
+      </div>
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
+        <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Data Consistency</p>
+        <p id="metricConsistency" class="font-mono text-xl text-ink-100 tabular">—</p>
+      </div>
+      <div class="rounded-2xl border border-base-700 bg-base-850 p-5 lg:col-span-2">
+        <p class="font-mono text-[10px] tracking-[0.2em] text-ink-500 uppercase mb-1">Monitoring Since</p>
+        <p id="metricMonitoringSince" class="font-mono text-xl text-ink-100 tabular">—</p>
+      </div>
+    </section>
+
     <!-- Charts -->
     <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
         <div class="flex items-center justify-between mb-3">
-          <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Voltage · Last 6h <span
+          <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Voltage · Last 24h <span
               class="text-ink-700 normal-case tracking-normal">(auto-zoomed)</span></p>
           <span class="h-2 w-2 rounded-full bg-volt"></span>
         </div>
@@ -266,7 +297,7 @@
       </div>
       <div class="rounded-2xl border border-base-700 bg-base-850 p-5">
         <div class="flex items-center justify-between mb-3">
-          <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Frequency · Last 6h <span
+          <p class="font-mono text-[11px] tracking-[0.25em] text-ink-500 uppercase">Frequency · Last 24h <span
               class="text-ink-700 normal-case tracking-normal">(auto-zoomed)</span></p>
           <span class="h-2 w-2 rounded-full bg-freq"></span>
         </div>
@@ -286,6 +317,9 @@
           </span>
           <span class="flex items-center gap-1.5 font-mono text-[10px] text-ink-500 uppercase tracking-wider">
             <span class="h-2 w-2 rounded-full bg-dead"></span> Outage
+          </span>
+          <span class="flex items-center gap-1.5 font-mono text-[10px] text-ink-500 uppercase tracking-wider">
+            <span class="h-2 w-2 rounded-full bg-unknown"></span> Unknown
           </span>
         </div>
       </div>
@@ -310,18 +344,13 @@
     Chart.defaults.font.family = fontMono;
     Chart.defaults.color = '#6b7688';
 
-    // Hard cap on points fed to each line chart. 6h of 1s data is up to
-    // 21,600 points; Chart.js re-tessellates every point on every .update(),
-    // which is the actual source of the lag (not the fetch, not the DOM).
-    // Rendering more than a few hundred points buys no visible fidelity on a
-    // ~900px-wide canvas anyway, so we stride down to this ceiling.
     const MAX_CHART_POINTS = 360;
 
     function baseGridOptions(min, max) {
       return {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false, // real-time redraws don't need tweening; this is pure render-cost removal
+        animation: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -347,7 +376,6 @@
             border: { display: false },
             ticks: {
               color: '#454f61', font: { size: 10 },
-              // extra precision since the axis is now zoomed to a tight band
               callback: (v) => Number(v.toFixed(2))
             }
           }
@@ -355,8 +383,6 @@
       };
     }
 
-    // Zooms the y-axis to the actual spread of the data (plus a small margin)
-    // instead of a fixed wide band, so small variances stay visible.
     function computeZoomedRange(values, minPad, roundTo) {
       const valid = values.filter(v => v !== null && v !== undefined && !Number.isNaN(v));
       if (valid.length === 0) return { min: undefined, max: undefined };
@@ -368,12 +394,6 @@
       return { min: round(lo - pad), max: round(hi + pad) };
     }
 
-    // Strides the raw readings array down to at most maxPoints, before any
-    // per-point formatting happens. This is a plain positional stride, not an
-    // average — outages are short square-wave dips, and averaging them into
-    // neighboring "on" readings would visually erase brief drops. A stride
-    // can still skip over a very short blip between two sampled indices;
-    // that's a real tradeoff of downsampling for render speed, not fixed here.
     function downsampleReadings(readings, maxPoints) {
       const n = readings.length;
       if (n <= maxPoints) return readings;
@@ -381,7 +401,7 @@
       const out = [];
       for (let i = 0; i < n; i += stride) out.push(readings[i]);
       const last = readings[n - 1];
-      if (out[out.length - 1] !== last) out.push(last); // keep the right edge current
+      if (out[out.length - 1] !== last) out.push(last);
       return out;
     }
 
@@ -431,13 +451,20 @@
       return new Date(ts * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
     }
 
-    // Explicit padStart build rather than toLocaleTimeString: some locales
-    // omit seconds even when asked for 'second: 2-digit', and outages here
-    // run a few minutes, so seconds are the resolution that actually matters.
     function formatHMS(ts) {
       const d = new Date(ts * 1000);
       const pad = n => String(n).padStart(2, '0');
       return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function formatDuration(sec) {
+      if (sec === 0) return '0m';
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
     }
 
     function updateClock() {
@@ -462,10 +489,10 @@
         text.textContent = 'Electricity ON';
         text.className = 'font-display text-2xl sm:text-3xl font-semibold text-live';
         sub.textContent = 'Supply nominal';
-        voltageEl.textContent = latest.voltage.toFixed(1);
-        freqEl.textContent = latest.frequency.toFixed(2);
-        voltageBar.style.width = Math.min(100, Math.max(0, ((latest.voltage - 180) / (260 - 180)) * 100)) + '%';
-        freqBar.style.width = Math.min(100, Math.max(0, ((latest.frequency - 48) / (52 - 48)) * 100)) + '%';
+        voltageEl.textContent = latest.voltage?.toFixed(1) || '--';
+        freqEl.textContent = latest.frequency?.toFixed(2) || '--';
+        if (latest.voltage) voltageBar.style.width = Math.min(100, Math.max(0, ((latest.voltage - 180) / (260 - 180)) * 100)) + '%';
+        if (latest.frequency) freqBar.style.width = Math.min(100, Math.max(0, ((latest.frequency - 48) / (52 - 48)) * 100)) + '%';
       } else {
         dot.className = 'h-5 w-5 rounded-full bg-dead transition-colors duration-500';
         card.className = 'lg:col-span-2 rounded-2xl border border-dead/30 bg-base-850 p-6 flex flex-col justify-between shadow-glow-dead transition-shadow duration-500';
@@ -509,20 +536,92 @@
       }
     }
 
-    function computeUptime(readings) {
-      if (readings.length === 0) return { pct: null, outages: 0 };
+    // Handles inconsistent event sequences gracefully by injecting 'unknown' states
+    function buildOutageSegments(events, startTs, endTs, earliestKnownPower) {
+      const sorted = events.slice().sort((a, b) => a.ts - b.ts);
+      let state = typeof earliestKnownPower === 'boolean'
+        ? (earliestKnownPower ? 'on' : 'off')
+        : 'unknown';
+
+      const segments = [];
+      let lastTs = startTs;
+
+      sorted.forEach(e => {
+        if (e.event === 'power_lost') {
+          if (state === 'on' || state === 'unknown') {
+            segments.push({ start: lastTs, end: e.ts, state: state });
+            state = 'off';
+            lastTs = e.ts;
+          } else if (state === 'off') {
+            // Inconsistency! A lost event while already off means we lost data in between
+            segments.push({ start: lastTs, end: e.ts, state: 'unknown' });
+            state = 'off';
+            lastTs = e.ts;
+          }
+        } else if (e.event === 'power_restored') {
+          if (state === 'off' || state === 'unknown') {
+            segments.push({ start: lastTs, end: e.ts, state: state });
+            state = 'on';
+            lastTs = e.ts;
+          } else if (state === 'on') {
+            // Inconsistency! Restored while already on
+            segments.push({ start: lastTs, end: e.ts, state: 'unknown' });
+            state = 'on';
+            lastTs = e.ts;
+          }
+        }
+      });
+      segments.push({ start: lastTs, end: endTs, state: state });
+      return segments;
+    }
+
+    function computeMetrics(readings, events, from, now) {
+      const earliestKnownPower = readings.length ? !!readings[0].power : undefined;
+      const segments = buildOutageSegments(events, from, now, earliestKnownPower);
+
+      let totalOutage24 = 0;
+      let longestOutage = 0;
+      let outageCount = 0;
+
+      segments.forEach(seg => {
+        if (seg.state === 'off') {
+          const dur = seg.end - seg.start;
+          totalOutage24 += dur;
+          if (dur > longestOutage) longestOutage = dur;
+          outageCount++;
+        }
+      });
+
+      const mttr = outageCount > 0 ? (totalOutage24 / outageCount) : 0;
+      const expectedReadings = (24 * 3600) / 5;
+      const consistency = (readings.length / expectedReadings) * 100;
+
       const onCount = readings.filter(r => r.power).length;
-      const pct = (onCount / readings.length) * 100;
-      let outages = 0;
-      for (let i = 1; i < readings.length; i++) {
-        if (readings[i - 1].power && !readings[i].power) outages++;
+      const pct = readings.length > 0 ? (onCount / readings.length) * 100 : null;
+
+      return {
+        totalOutage24,
+        longestOutage,
+        mttr,
+        consistency: Math.min(100, consistency),
+        readingsCount: readings.length,
+        pct,
+        outages: outageCount
+      };
+    }
+
+    async function fetchGlobalStats() {
+      try {
+        const res = await fetch('/api/stats');
+        return await res.json();
+      } catch (err) {
+        return { totalOutageAllTime: 0, monitoringSince: 'Unknown' };
       }
-      return { pct, outages };
     }
 
     async function loadData() {
       const now = Math.floor(Date.now() / 1000);
-      const from = now - 6 * 3600; // last 6 hours
+      const from = now - 24 * 3600; // last 24 hours
 
       try {
         const [readingsRes, eventsRes] = await Promise.all([
@@ -534,13 +633,23 @@
 
         const readings = await readingsRes.json();
         const events = await eventsRes.json();
+        const globalStats = await fetchGlobalStats();
 
-        // Uptime/outage stats use the FULL-resolution readings (they're a
-        // simple pass, cheap at any size). Only the chart series get strided
-        // down — that's where per-point render cost actually lives.
-        const { pct, outages } = computeUptime(readings);
-        document.getElementById('uptimeStat').textContent = pct === null ? '—' : `${pct.toFixed(1)}%`;
-        document.getElementById('outageStat').textContent = pct === null ? '—' : outages;
+        // Computing all 24h & Global Stats
+        const metrics = computeMetrics(readings, events, from, now);
+
+        document.getElementById('uptimeStat').textContent = metrics.pct === null ? '—' : `${metrics.pct.toFixed(1)}%`;
+        document.getElementById('outageStat').textContent = metrics.outages;
+
+        document.getElementById('metricOutage24').textContent = formatDuration(metrics.totalOutage24);
+        document.getElementById('metricOutageAll').textContent = formatDuration(globalStats.totalOutageAllTime);
+        document.getElementById('metricLongestOutage').textContent = formatDuration(metrics.longestOutage);
+        document.getElementById('metricMTTR').textContent = formatDuration(metrics.mttr);
+        document.getElementById('metricReadingsCount').textContent = metrics.readingsCount.toLocaleString();
+        document.getElementById('metricConsistency').textContent = `${metrics.consistency.toFixed(2)}%`;
+
+        const sinceDate = new Date(globalStats.monitoringSince);
+        document.getElementById('metricMonitoringSince').textContent = isNaN(sinceDate) ? globalStats.monitoringSince : sinceDate.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' });
 
         const sampled = downsampleReadings(readings, MAX_CHART_POINTS);
 
@@ -559,7 +668,7 @@
         voltageChart.data.datasets[0].data = voltageData;
         voltageChart.options.scales.y.min = voltageRange.min;
         voltageChart.options.scales.y.max = voltageRange.max;
-        voltageChart.update('none'); // skip animation/tweening on every tick
+        voltageChart.update('none');
 
         const freqRange = computeZoomedRange(frequencyData, 0.05, 0.01);
         frequencyChart.data.labels = labels;
@@ -574,7 +683,6 @@
         renderEvents(events);
 
         document.getElementById('lastRefreshed').textContent = `Last refreshed ${new Date().toLocaleTimeString()}`;
-
         document.getElementById('pollDot').className = 'relative inline-flex rounded-full h-2 w-2 bg-live';
 
       } catch (err) {
@@ -584,14 +692,11 @@
       }
     }
 
-    // ---- Polling-rate control ----
-    // Single interval handle, torn down and rebuilt on rate change so there's
-    // never more than one loadData loop running at once.
     let pollIntervalId = null;
 
     function startPolling(seconds) {
       if (pollIntervalId) clearInterval(pollIntervalId);
-      loadData(); // refresh immediately so the rate change feels responsive
+      loadData();
       pollIntervalId = setInterval(loadData, seconds * 1000);
     }
 
@@ -599,8 +704,6 @@
     pollRateSelect.addEventListener('change', (e) => {
       startPolling(Number(e.target.value));
     });
-
-    // ---- 24h event timeline ----
 
     const TL_X0 = 40, TL_X1 = 960, TL_Y = 46, TL_H = 20;
 
@@ -615,42 +718,11 @@
       return el;
     }
 
-    // Reconstructs on/off segments across the window from the ordered event
-    // stream. earliestKnownPower (if available) seeds the state at the left
-    // edge; otherwise we infer it from the first event, defaulting to "on".
-    function buildOutageSegments(events, startTs, endTs, earliestKnownPower) {
-      const sorted = events.slice().sort((a, b) => a.ts - b.ts);
-      let state = typeof earliestKnownPower === 'boolean'
-        ? earliestKnownPower
-        : (sorted[0] ? sorted[0].event !== 'power_lost' : true);
-
-      const segments = [];
-      let offStart = null;
-      if (state === false) offStart = startTs;
-
-      sorted.forEach(e => {
-        if (state === true && e.event === 'power_lost') {
-          offStart = e.ts;
-          state = false;
-        } else if (state === false && e.event === 'power_restored') {
-          segments.push([offStart, e.ts]);
-          offStart = null;
-          state = true;
-        }
-      });
-
-      if (state === false && offStart !== null) segments.push([offStart, endTs]);
-      return segments;
-    }
-
     async function loadTimeline() {
       const now = Math.floor(Date.now() / 1000);
       const from = now - 24 * 3600;
 
       try {
-        // Only the FIRST reading in the window is used (to seed the on/off
-        // state at the left edge), but this still requests the full 24h of
-        // readings from the API to get it. Not fixed here — see note below.
         const [eventsRes, readingsRes] = await Promise.all([
           fetch(`/api/events?from=${from}&to=${now}`),
           fetch(`/api/readings?from=${from}&to=${now}`)
@@ -666,37 +738,32 @@
         const svg = document.getElementById('timelineSvg');
         svg.innerHTML = '';
 
-        // baseline "on" track — square corners throughout, per request. The
-        // earlier fix (capping rx to segment size) only prevented the worst
-        // collapse-into-a-circle case; corners were still rounded, and on
-        // real data (outages of a few minutes on a 24h-wide axis) that's
-        // still enough curvature to blur where the edge actually is. Zero
-        // rounding, everywhere on this timeline, removes the ambiguity.
+        // Baseline Track - Gray (Represents Unknown / Missing logs)
         svg.appendChild(svgEl('rect', {
           x: TL_X0, y: TL_Y, width: TL_X1 - TL_X0, height: TL_H, rx: 0,
-          fill: 'rgba(61,220,132,0.12)'
+          fill: '#334155'
         }));
 
-        // Outage bands. Two draw paths, both unrounded:
-        // - Narrower than TICK_THRESHOLD: too thin to read as a duration at
-        //   all (sub-2px on a 24h axis is well under a minute), so it's drawn
-        //   as a fixed-width vertical bar extending past the track, marking
-        //   "an outage happened here" rather than implying a measurable width.
-        // - At or above the threshold: drawn at its true width, square-cornered,
-        //   so a 5-minute outage reads as a 5-minute-wide bar, not a pill.
-        const TICK_THRESHOLD = 2; // px
+        const TICK_THRESHOLD = 2;
         const TICK_WIDTH = 3;
 
-        segments.forEach(([segFrom, segTo]) => {
-          const x1 = tlX(segFrom, from, now);
-          const x2 = tlX(segTo, from, now);
-          const width = x2 - x1;
+        let outageCount = 0;
+
+        segments.forEach(seg => {
+          if (seg.state === 'unknown') return; // let base gray show through
+
+          const x1 = tlX(seg.start, from, now);
+          const x2 = tlX(seg.end, from, now);
+          const width = Math.max(0, x2 - x1);
+
+          if (width === 0) return;
+          if (seg.state === 'off') outageCount++;
 
           const title = svgEl('title', {});
-          title.textContent = `${formatHMS(segFrom)} to ${formatHMS(segTo)}`;
+          title.textContent = `${seg.state.toUpperCase()}: ${formatHMS(seg.start)} to ${formatHMS(seg.end)}`;
 
           let bar;
-          if (width < TICK_THRESHOLD) {
+          if (seg.state === 'off' && width < TICK_THRESHOLD) {
             const cx = (x1 + x2) / 2;
             bar = svgEl('rect', {
               x: cx - TICK_WIDTH / 2, y: TL_Y - 4, width: TICK_WIDTH, height: TL_H + 8, rx: 0,
@@ -705,7 +772,8 @@
           } else {
             bar = svgEl('rect', {
               x: x1, y: TL_Y, width, height: TL_H, rx: 0,
-              fill: '#f2596b', 'fill-opacity': '0.85'
+              fill: seg.state === 'on' ? 'rgba(61,220,132,0.12)' : '#f2596b',
+              'fill-opacity': seg.state === 'off' ? '0.85' : '1'
             });
           }
           bar.appendChild(title);
@@ -728,7 +796,7 @@
           svg.appendChild(label);
         }
 
-        // event markers with native hover tooltips
+        // event markers
         events.forEach(e => {
           const x = tlX(e.ts, from, now);
           const isLost = e.event === 'power_lost';
@@ -743,16 +811,21 @@
           svg.appendChild(marker);
         });
 
-        document.getElementById('timelineEmpty').classList.toggle('hidden', segments.length > 0);
+        document.getElementById('timelineEmpty').classList.toggle('hidden', outageCount > 0);
 
       } catch (err) {
         console.error('Failed to load timeline:', err);
       }
     }
 
-    startPolling(1); // default rate; dropdown reflects "1" by default in the HTML
+    startPolling(5);
     loadTimeline();
     setInterval(loadTimeline, 30000);
+
+    function go_fullscreen() {
+      document.querySelector("body").requestFullscreen();
+    }
+
   </script>
 
 </body>

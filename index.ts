@@ -110,8 +110,48 @@ app.get('/health', (_, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/stats
+app.get('/api/stats', (req, res) => {
+  try {
+    // 1. Get the very first timestamp to determine when monitoring started
+    const firstReading = db.prepare(`SELECT MIN(ts) as minTs FROM readings`).get() as any;
+
+    // 2. Calculate total outage time in seconds
+    // Uses LEAD() to find the time gap between a power=0 reading and the very next reading
+    const outageData = db.prepare(`
+      SELECT SUM(next_ts - ts) as totalOutage
+      FROM (
+        SELECT 
+          ts, 
+          power, 
+          LEAD(ts) OVER (PARTITION BY device ORDER BY ts ASC) as next_ts
+        FROM readings
+      )
+      WHERE power = 0 AND next_ts IS NOT NULL
+    `).get() as any;
+
+    // The existing GET routes use Math.floor(Date.now() / 1000), 
+    // so this assumes 'ts' is stored in seconds. Multiply by 1000 for the Date object.
+    const monitoringSince = firstReading && firstReading.minTs
+      ? new Date(firstReading.minTs * 1000).toISOString()
+      : 'Unknown';
+
+    const totalOutageAllTime = outageData && outageData.totalOutage
+      ? Number(outageData.totalOutage)
+      : 0;
+
+    res.json({
+      totalOutageAllTime,
+      monitoringSince
+    });
+  } catch (err) {
+    console.error('Error fetching global stats:', err);
+    res.status(500).json({ error: 'Failed to fetch global stats' });
+  }
+});
+
 const PORT = 9034;
 
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
-})
+});
